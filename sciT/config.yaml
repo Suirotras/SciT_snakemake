@@ -13,8 +13,8 @@ reference:
 QC: # The quality control thresholds used for the quality control report
   transcriptome_count_threshold: 0
   transcriptome_genes_threshold: 1000
-  report_top_samples: 100 # Number of best cells/samples to include in the report, based on the number of unique DamID reads
-  report_bottom_samples: 100 # Number of worst cells to include in the report, based on the number of unique DamID reads
+  report_top_samples: 100 # Number of best cells/samples to include in the report, based on the number of unique sciT reads
+  report_bottom_samples: 100 # Number of worst cells to include in the report, based on the number of unique sciT reads
 
 sciT:
   cell_min_transcriptome_count: 25 # Minimum number of transcriptome molecules for a cell to be counted
@@ -31,16 +31,16 @@ conditions:
       i31: ffcc00
 # Add library data here by creating a libraries section, see documentation for more details
 libraries:
-  i31-FV-GSK126-1K:
+  i31-sample1-1K:
     type: sciT
     demultiplexer: sciT
     transcriptome-paired-end-fastq-files:
       R1:
-        - i31-FV-GSK126-Gastruloids-sciT-BV_AACN7YKHV_S24_L001_R1_001.fastq.gz
-        - i31-FV-GSK126-Gastruloids-sciT-BV_AACN7YKHV_S24_L002_R1_001.fastq.gz
+        - i31-sample1_L001_R1_001.fastq.gz
+        - i31-sample1_L002_R1_001.fastq.gz
       R2:
-        - i31-FV-GSK126-Gastruloids-sciT-BV_AACN7YKHV_S24_L001_R2_001.fastq.gz
-        - i31-FV-GSK126-Gastruloids-sciT-BV_AACN7YKHV_S24_L002_R2_001.fastq.gz
+        - i31-sample1_L001_R2_001.fastq.gz
+        - i31-sample1_L002_R2_001.fastq.gz
     library-meta:
       number: 1K
       library: i31
