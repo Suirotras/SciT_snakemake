@@ -15,7 +15,6 @@ from yaml.representer import Representer
 import yaml
 from uuid import uuid4
 from scit import wasp_read_is_assigned_to_haplotype_1, wasp_read_is_assigned_to_haplotype_2
-import matplotlib.pyplot as plt
 import logging
 from typing import Iterator
 
@@ -108,7 +107,7 @@ def apply_read_group(reads: List[pysam.AlignedSegment],
     # When the ci tag is set this means the origin cell is known.
     # If not it means the data is singleton
     rejection_reason: READ_GROUP_REJECTION_REASON = None
-    if not reads[0].has_tag('BC'): # This can happen for scidam data
+    if not reads[0].has_tag('BC'):
         bc: str = 'NotFound' 
         rejection_reason = 'BC'
     else:
@@ -159,9 +158,7 @@ def parse_ds_field(s: str) -> Dict[str, str]:
     return dict( _parse_single_ds_kv_pair(kv.split(':',1)) for kv in parts ) # type: ignore
 
 
-def tag_damid_file(file_in_path: str,
-                   damid_out_path: str,
-                   cut_site_assigner: CutSiteAssigner | None, 
+def tag_sciT_file(file_in_path: str,
                    transcriptome_out_path: str | None = None,
                    translation_table: Dict[Tuple[str], Any] | None = None, #  , # origin_key (tags) -> (tag, value)                   
                    translation_tags: List[Set[str]] | None = None,
@@ -170,24 +167,20 @@ def tag_damid_file(file_in_path: str,
                    transcriptome_only: bool = False,
                    gene_tag: str = 'GN', # Tag used to assign a read to a gene
                    multiome_indices_match: bool = False,
-                   min_mapping_quality: int = 0, 
                    ):
 
     base_tagger = QueryNameFlagger()
     write_transcriptome = transcriptome_out_path is not None
-    damid_molecules_seen = set() # mi,contig,pos
     transcriptome_molecules_seen = defaultdict(set) # sample -> {gene, RX}
 
     # { 'ID': ID, 'LB':library,
     #             'PL':platform,
     #             'SM':sampleLib,
     #             'PU':readGroup }
-    damid_read_groups = dict()
     transcriptome_read_groups = dict()
     
     overall_statistics = defaultdict(Counter) # cell->{total_reads,mapped_reads,unmapped_reads,} etc
     datatype_statistics = defaultdict(Counter)
-    dam_statistics = defaultdict(Counter)
     transcriptome_statistics = defaultdict(Counter) 
     with ExitStack() as exitstack:
 
@@ -197,15 +190,11 @@ def tag_damid_file(file_in_path: str,
         
         write_program_tag(
             out_header,
-            program_name='damid_tagger',
+            program_name='sciT_tagger',
             command_line= " ".join(
                 sys.argv),
             version= __version__,
-            description=f'DamID tagger, executed at {datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")}')
-
-
-        if not transcriptome_only:
-            damid_out = exitstack.enter_context( sorted_bam_file(damid_out_path, header=out_header, read_groups=damid_read_groups) )
+            description=f'sciT tagger, executed at {datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")}')
         if write_transcriptome:
             transcriptome_out = exitstack.enter_context( sorted_bam_file(transcriptome_out_path, header=out_header,read_groups=transcriptome_read_groups) )
         
@@ -227,7 +216,8 @@ def tag_damid_file(file_in_path: str,
             except KeyError:
                 if transcriptome_only:
                     continue
-                dt = 'DamID' # Fall back to DamID
+                else:
+                    raise KeyError('Data type tag (dt) not found in read, cannot continue')
             datatype_statistics[sample_key][dt] +=1 
             
             if dt=='RNA':
@@ -238,36 +228,6 @@ def tag_damid_file(file_in_path: str,
                 
                 is_duplicate, is_qcfail = qc_and_deduplicate_transcriptomic_read(gene_tag, transcriptome_molecules_seen, transcriptome_out, records, tagged_read, sample_key, read_haplotype)
                 update_transcriptome_statistics(transcriptome_statistics, tagged_read, read_haplotype, sample_key, is_duplicate, is_qcfail)
-                    
-            else:
-                cut_site_prediction = cut_site_assigner.predict(*records)
-                is_valid_read =  cut_site_prediction.is_valid
-                assert cut_site_prediction.cut_site_informative_read is not None, "Cut site prediction has no associated informative read"
-                if not cut_site_prediction.cut_site_informative_read.has_tag('BC') or not cut_site_prediction.cut_site_informative_read.has_tag('RX'): # Not enough barcoding information available.
-                    is_valid_read = False
-                    
-                if cut_site_prediction.cut_site_informative_read.is_unmapped or cut_site_prediction.cut_site_informative_read.mapping_quality < min_mapping_quality:
-                    is_valid_read = False
-                
-                if not is_valid_read:
-                    is_duplicate = False
-                else:
-                    molecule_hash = (cut_site_prediction.cut_site_informative_read.reference_name, 
-                                     cut_site_prediction.predicted_cut_position, 
-                                     cut_site_prediction.cut_site_informative_read.get_tag('MI') 
-                                        if cut_site_prediction.cut_site_informative_read.has_tag('MI') 
-                                        else cut_site_prediction.cut_site_informative_read.has_tag('BC')+cut_site_prediction.cut_site_informative_read.has_tag('RX'), 
-                                     read_haplotype)
-                    
-                    if molecule_hash in damid_molecules_seen:
-                        is_duplicate = True
-                    else:
-                        is_duplicate = False
-                        damid_molecules_seen.add(molecule_hash)
-                        
-                #STATISTICS UPDATE:
-                update_dam_statistics(dam_statistics, cut_site_prediction.cut_site_informative_read, read_haplotype, sample_key, is_duplicate, is_valid_read)
-                write_read_duplicate_and_rg(damid_read_groups, damid_out, records, rg_id, rg_def, is_duplicate)
                 
         # Write unique genes seen:
         for sample_key, molecules in transcriptome_molecules_seen.items():
@@ -278,29 +238,15 @@ def tag_damid_file(file_in_path: str,
         
         # Add meta information to the read groups if such meta data is available
         if meta is not None:
-            read_group_meta = extract_read_group_meta(meta, damid_read_groups)
+            read_group_meta = extract_read_group_library_meta(meta, transcriptome_read_groups)
             for rg_id, attributes in read_group_meta.items():
                 # Append the collected meta to the DS field
-                damid_read_groups[rg_id]['DS']  += ';' + ( ';'.join([f'{k}:{v}' for k,v in attributes.items()]) )
-                
-            
-    if not transcriptome_only:
-        # plx.simple_bar(list(observed_offsets_fwd.keys()), 
-        #             list(observed_offsets_fwd.values()), 
-        #             width = 100, title = 'Observed offsets after correction fwd ')
-        # plx.show()
-        
-        # plx.simple_bar(list(observed_offsets_rev.keys()), 
-        #             list(observed_offsets_rev.values()), 
-        #             width = 100, title = 'Observed offsets after correction rev ')
-        # plx.show()
-        pass
+                transcriptome_read_groups[rg_id]['DS']  += ';' + ( ';'.join([f'{k}:{v}' for k,v in attributes.items()]) )
             
     return {
         'overall_statistics':overall_statistics, 
         'datatype_statistics':datatype_statistics, # cell-> dt -> n
         'per_data_type':{
-            'DamID':dam_statistics,
             'RNA':transcriptome_statistics
         }}
 
@@ -328,14 +274,6 @@ def pick_tagged_read(records):
     #     unique_genes_allele_1: 0
     #     unique_genes_allele_2: 0
     #     unmapped: 1298
-
-def write_read_duplicate_and_rg(damid_read_groups, damid_out, records, rg_id, rg_def, is_duplicate):
-    for read in records:
-        if is_duplicate:
-            read.is_duplicate = True
-        damid_out.write(read)
-        if rg_id not in damid_read_groups:
-            damid_read_groups[rg_id] = rg_def
 
 def qc_and_deduplicate_transcriptomic_read(gene_tag:str, 
                                            transcriptome_molecules_seen:Set, 
@@ -430,65 +368,15 @@ def update_transcriptome_statistics(transcriptome_statistics,
         else:
             transcriptome_statistics[sample_key][f'duplicate_allele_{read_haplotype}'] +=1
 
-def update_dam_statistics(dam_statistics: dict, 
-                          informative_read: pysam.AlignedSegment, 
-                          read_haplotype: Literal[1,2] | None, 
-                          sample_key: str, 
-                          is_duplicate: bool, 
-                          is_valid_cut: bool):
-    dam_statistics[sample_key]['reads'] += 1
-    if informative_read.is_mapped:
-        dam_statistics[sample_key]['mapped'] += 1
-    else:
-        dam_statistics[sample_key]['unmapped'] += 1
-    if not is_valid_cut:
-        dam_statistics[sample_key]['qcfail'] +=1
-    elif not is_duplicate:
-        dam_statistics[sample_key]['unique'] +=1
-    else:
-        dam_statistics[sample_key]['duplicate'] +=1            
-    # Allele specific
-    if read_haplotype is not None:
-        dam_statistics[sample_key][f'mapped_allele_{read_haplotype}'] += 1
-        if not is_valid_cut:
-            dam_statistics[sample_key][f'qcfail_allele_{read_haplotype}'] +=1
-        elif not is_duplicate:
-            dam_statistics[sample_key][f'unique_allele_{read_haplotype}'] +=1
-        else:
-            dam_statistics[sample_key][f'duplicate_allele_{read_haplotype}'] +=1
-
-def extract_read_group_meta(meta, damid_read_groups) -> Dict[str, Dict[str,Any]]: 
-    dt_indexer = meta['cell-meta']['primary-index']
-    # Create a mapping which connects the indexer (bi tag) to a list of readgroups
-    indexer_to_readgroups = defaultdict(list)
-    for rgid, read_group_data in damid_read_groups.items():
-        rg_info = parse_ds_field( read_group_data.get('DS') )
-        if rg_info['dt']!=dt_indexer:
-            continue
-                # Some read groups will not have a bi flag (scidam only) when no (complete) BC is present
-        if not 'bi' in indexer_to_readgroups:
-            continue
-        indexer_to_readgroups[ rg_info['bi'] ].append( rgid )
-    logging.info('Cell identifier to read groups:')
-    for indexer, readgroups in indexer_to_readgroups.items():
-        logging.info(f' {indexer} -> {",".join(readgroups)}')
-        
+def extract_read_group_library_meta(meta, tx_read_groups) -> Dict[str, Dict[str,Any]]:         
     read_group_meta = defaultdict(dict) # Read group -> meta to add
     # Obtain library wide meta information and apply it to all read groups, it can be overriden by cell specific meta:
     if 'library-meta' in meta:
         for k,v in meta['library-meta'].items():
             v = str(v).replace(':','-colonreplace-').replace(';','-semicolonreplace-')                
             k = str(k).replace(':','-colonreplace-').replace(';','-semicolonreplace-')
-            for rgid, read_group_data in damid_read_groups.items():
+            for rgid, read_group_data in tx_read_groups.items():
                 read_group_meta[rgid][k] = v
-                
-    if 'meta' in meta['cell-meta']:
-        for index, kvpairs in  meta['cell-meta']['meta'].items():
-            for k,v in kvpairs.items():
-                v = str(v).replace(':','-colonreplace-').replace(';','-semicolonreplace-')                
-                k = str(k).replace(':','-colonreplace-').replace(';','-semicolonreplace-')                
-                for associated_rg in indexer_to_readgroups[str(index)]:
-                    read_group_meta[associated_rg][k] = v
 
     return read_group_meta
     
@@ -496,18 +384,13 @@ def extract_read_group_meta(meta, damid_read_groups) -> Dict[str, Dict[str,Any]]
 def run():
     argparser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description="Assign cut sites and deduplicate a DamID library. Make sure the input file is sorted by query name! The outputs are sorted by coordinate"
+        description="Deduplicate a sciT library. Make sure the input file is sorted by query name! The outputs are sorted by coordinate"
     )
 
     argparser.add_argument(
         '-bam_in',
         help="Path to input bam file (Can be mixture of transcriptome and Dam)",
         type=str,required=True
-        )
-    argparser.add_argument(
-        '-damid_out',
-        help="Path to output DamID bam file",
-        type=str,required=False
         )
     argparser.add_argument(
         '-transcriptome_out',
@@ -523,11 +406,6 @@ def run():
         '-statistics',
         help="Path to statistics yaml",
         type=str,required=False
-        )
-    argparser.add_argument(
-        '-motif',
-        default='GATC',
-        type=str,required=False, help='Cut site motif'
         )
     
     argparser.add_argument(
@@ -551,30 +429,6 @@ def run():
         )
     
     argparser.add_argument(
-        '-min_mapping_quality',
-        help="Minimum mapping quality for a mapped read to be taken into account",
-        type=int, default=10
-        )
-    
-        
-    argparser.add_argument(
-        '--scidam',
-        help="The data is scidam, enables scidam based distance to cut-site function",
-        action='store_true'
-        )
-    
-    argparser.add_argument(
-        '--pdf_threshold',
-        help="SciDAM only: The minimum probability for a DamID cut to be considered (this probability is stored in pC tag), set to 0 to disable this filter",
-        type=float, default=0.0005
-        )
-    argparser.add_argument(
-        '-cut_density_plot',
-        help="Path to density plot",
-        type=str,required=False
-        )
-    
-    argparser.add_argument(
         '--log-level',
         choices=list(log_level_dict.keys()),
         default='INFO')
@@ -595,58 +449,11 @@ def run():
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
 
-    logging.info("Starting damid-tagger")
+    logging.info("Starting sciT-tagger")
     logging.info(f"Arguments: {args}")
     translation_table, translation_tags = prepare_multiome_translation_table(args.multiomes)
     
-    if args.damid_out is None:
-        transcriptome_only= True
-    else:    
-        transcriptome_only= False
-
-    if not transcriptome_only:
-        logging.info("Determining cut locations in refererence")
-        centered_coord_sorted_cut_sites = CenteredCoordSortedCutSites(fasta_path= args.reference_fasta_path, 
-                                                                      motif="GATC"
-                                                                    )
-        # For scidam use:
-        if args.scidam:
-            logging.info('sciDAM mode')
-            cut_site_assigner = CutSiteAssigner_SciDam_Multi(
-               centered_coord_sorted_cut_sites = centered_coord_sorted_cut_sites,
-               dist_clip_after= 1000,
-               dist_clip_before= 1000,
-               p_threshold=args.pdf_threshold
-               )
-            cut_site_assigner.fit(args.bam_in, sample_n = 1_000_000)
-        else:
-            logging.info('DamID mode')
-            cut_site_assigner = CutSiteAssigner_DamID(
-                centered_coord_sorted_cut_sites = centered_coord_sorted_cut_sites
-                )
-            cut_site_assigner.fit(args.bam_in, sample_n = 25_000)
-            # plx.simple_bar(list(cut_distance_distribution_fwd.keys()), 
-            #             list(cut_distance_distribution_fwd.values()), 
-            #             width = 100, title = 'Motif distance from FWD read start')
-            # plx.show()
-            
-            # plx.simple_bar(list(cut_distance_distribution_rev.keys()), 
-            #             list(cut_distance_distribution_rev.values()), 
-            #             width = 100, title = 'Motif distance from REV read start')
-            # plx.show()
-            
-            # Obtain max index:
-
-            logging.info(f'Using fixed offset of {cut_site_assigner.offset_fwd} for fwd strand')
-            logging.info(f'Using fixed offset of {cut_site_assigner.offset_rev} for rev strand')
-    else:
-        cut_site_assigner = None # Not needed for transcriptome
-    
-    
-    if not transcriptome_only and args.cut_density_plot is not None and cut_site_assigner is not None:
-        # Write plot with probability density of p cut relative to the read end
-        cut_site_assigner.plot()
-        plt.savefig(args.cut_density_plot)
+    transcriptome_only= True
     
     if args.meta is not None:
         with open(args.meta) as h:
@@ -655,11 +462,7 @@ def run():
         meta = None
     
     multiome_indices_match = False
-    if meta is not None:
-        if meta['type'] == 'scDamT':# check if data is multiome
-            if 'multiomes' not in meta: # Check if indices are provided
-                multiome_indices_match = True
-                logging.warning("Multiome data found without provided indices, assuming cell barcode indices are matching between transcriptome and genome")
+
     logging.info("Writing results")    
     
     if args.threads>1:
@@ -669,15 +472,12 @@ def run():
             temp_folder = './temp'
             cmds = []
             for contig in contigs:
-                temp_bam_path_dam = f'{temp_folder}/{uuid4()}.dam.bam'
                 temp_bam_path_tx = f'{temp_folder}/{uuid4()}.tx.bam'
                 
                 cmds.append((
-                    tag_damid_file,
+                    tag_sciT_file,
                     {
                         'file_in_path': args.bam_in,
-                        'cut_site_assigner': cut_site_assigner,
-                        'damid_out_path': temp_bam_path_dam,
                         'transcriptome_out_path': temp_bam_path_tx,
                         'translation_table' : translation_table,
                         'translation_tags' : translation_tags,
@@ -685,8 +485,7 @@ def run():
                         'contig' : contig,
                         'transcriptome_only':transcriptome_only,
                         'gene_tag':args.gene_tag,
-                        'multiome_indices_match':multiome_indices_match,
-                        'min_mapping_quality':args.min_mapping_quality
+                        'multiome_indices_match':multiome_indices_match
                     })
                 )
             
@@ -695,20 +494,15 @@ def run():
                 # Merge the statistics
                 recurse_add(result, stats)
             
-            if not transcriptome_only: 
-                merge_bams( [cmd['damid_out_path'] for _,cmd in cmds], args.damid_out, threads=args.threads)
             merge_bams( [cmd['transcriptome_out_path'] for _,cmd in cmds], args.transcriptome_out, threads=args.threads)
     else:
-        stats = tag_damid_file(args.bam_in,
-                    args.damid_out,
-                    cut_site_assigner,
+        stats = tag_sciT_file(args.bam_in,
                     transcriptome_out_path=args.transcriptome_out,
                     translation_table=translation_table, 
                     translation_tags=translation_tags,
                     meta= meta,
                     transcriptome_only=transcriptome_only,
-                    multiome_indices_match=multiome_indices_match,
-                    min_mapping_quality=args.min_mapping_quality
+                    multiome_indices_match=multiome_indices_match
                     )
     
 
@@ -716,15 +510,7 @@ def run():
         # Interpret defaultdict and Counter as a dictionary
         yaml.add_representer(defaultdict, Representer.represent_dict)
         yaml.add_representer(Counter, Representer.represent_dict)
-        if not transcriptome_only:
-            pass
-            # stats['offsets'] = {
-            #     #'distribution_fwd':cut_distance_distribution_fwd,
-            #     #'distribution_rev':cut_distance_distribution_rev,
-                
-            #     # 'fwd':cut_site_assigner.fwd_offset,
-            #     # 'rev':cut_site_assigner.rev_offset (Not valid for scidam)
-            # }
+        
         with open(args.statistics,'w') as h:
             yaml.dump(stats,h)
     

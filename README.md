@@ -44,7 +44,7 @@ Now you can create the base conda environment that will be used for running the 
 After conda is activated, run the following code to create the base environment.
 
 ```bash
-conda create -c conda-forge -c bioconda -n sciT_snakemake -y snakemake samtools p7zip gcc zlib openjdk snakemake-executor-plugin-slurm mamba wget git
+conda create -c conda-forge -c bioconda -n sciT_snakemake -y snakemake samtools p7zip gcc cxx-compiler zlib openjdk snakemake-executor-plugin-slurm mamba wget git
 ```
 
 ### Check reference repositories
