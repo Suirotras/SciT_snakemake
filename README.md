@@ -112,7 +112,7 @@ Clone this github repository
 
 ```bash
 # clone repository
-git clone https://github.com/Suirotras/SciT_snakemake.git
+git clone git@github.com:Suirotras/SciT_snakemake.git
 # move into repository
 cd SciT_snakemake
 ```
@@ -142,7 +142,7 @@ Clone this github repository to the location where you want to preprocess the sc
 ```bash
 cd path/to/desired/location
 # clone repository
-git clone https://github.com/Suirotras/SciT_snakemake.git
+git clone git@github.com:Suirotras/SciT_snakemake.git
 # move into repository
 cd SciT_snakemake
 cd sciT
@@ -151,6 +151,8 @@ cd sciT
 > [!IMPORTANT]
 > If this is the FIRST time you are running this workflow, you NEED to first install the packages in the `software_repositories` directory.
 > Check out the [**Install sciT workflow packages**](#install-scit-workflow-packages) section first before continuing.
+>
+> If this was not the first time running this workflow, you can safely remove the `software_repositories` directory, as it won't be needed.
 
 ### Create a symlink to the reference repository directory
 
