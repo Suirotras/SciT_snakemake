@@ -6,6 +6,9 @@ This snakemake workflow represents an adaptation of an existing in-house snakema
 it to preprocess single-cell transcriptomics data that was generated using a single-cell combinatorial
 indexing approach (sciT).
 
+Below you will find instructions for the [initial setup](#initial-setup) of the sciT working environment, and also the
+required steps you perform for [each sciT workflow](#execution-of-scit-workflow).
+
 ## initial setup
 
 ### Install miniforge3
