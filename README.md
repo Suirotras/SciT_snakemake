@@ -280,4 +280,55 @@ snakemake --executor slurm --cores 60 --resources mem_mb=100000 -k -p --rerun-in
 
 ## Issues
 
+### Out of memory
+
+It is possible that for some rules, not enough memory is allocated for your specific job.
+
+For example, an `OUT_OF_MEMORY` error occured for me in the rule that concatenates fastq files.
+In the snakemake log file, that looks like this:
+
+```bash
+Error in rule sciT-RNA-concat-i31-sample1-1K-R2:
+    message: SLURM-job '45153759' failed, SLURM status is: 'OUT_OF_MEMORY'. For further error details see the cluster/cloud log and the log files of the involved rule(s).
+    jobid: 13
+    input: /path/to/subsampled/i31-sample1-sciT_L001_R2_001.fastq.gz, /path/to/subsampled/i31-sample1-sciT_L002_R2_001.fastq.gz
+    output: results/libraries/i31-sample1-1K/raw.RNA.R2.fastq.gz
+    log: log/concat/i31-sample1-1K_R2.stderr, /path/to/.snakemake/slurm_logs/rule_sciT-RNA-concat-i31-sample1-1K-R2/45153759.log (check log file(s) for error details)
+    shell:
+        cat /path/to/subsampled/i31-sample1-sciT_L001_R2_001.fastq.gz /path/to/subsampled/i31-sample1-sciT_L002_R2_001.fastq.gz > results/libraries/i31-sample1-1K/raw.RNA.R2.fastq.gz 2> log/concat/i31-sample1-1K_R2.stderr
+        (command exited with non-zero exit code)
+    external_jobid: 45153759
+```
+
+In these cases, you should find the problematic rule, which should be located in the `snakefile` or one of the
+`rules/*/*.smk` files. This problematic rule was located in the `snakefile`.
+
+After finding the problematic rule, find its **resources** directive, which looks something like this:
+
+```bash
+resources:
+  mem_mb=lambda wildcards, attempt: attempt * 100
+```
+
+This essentially means that the memory (i.e. `mem_mb`) allocated to this rule on its first attempt is 100MB.
+On the second attempt, the allocated memory will be 200MB.
+
+The `OUT_OF_MEMORY` error will be effectively solved by setting this to a higher value, for example 4000MB:
+
+```bash
+resources:
+  mem_mb=lambda wildcards, attempt: attempt * 4000
+```
+
+> [!NOTE]
+> Even though you call snakemake using the `--resources mem_mb=100000` flag, the memory might still be limited in the individual rules.
+>
+> Thus, only changing this flag will likely not fix the issue.
+
+> [!TIP]
+> The same logic applies to other resource limitations as for the above mentioned `mem_mb`. When snakemake rules display errors for other
+> resource limitations, like `runtime`, you can likely change this in the **resources** directive of the problematic rule.
+
+### Other issues
+
 If there are issues, the documentation of the original in-house workflow might be helpful resolving the issue.
