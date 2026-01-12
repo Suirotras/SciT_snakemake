@@ -44,6 +44,3 @@ libraries:
     library-meta:
       number: 1K
       library: i31
-    cell-meta:
-      primary-index: sciT
-      meta: {}

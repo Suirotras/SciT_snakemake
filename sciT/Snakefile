@@ -17,6 +17,18 @@ except subprocess.CalledProcessError:
     raise ValueError('sciT-tagger seems not to be installed yet, check the manual section "Install sciT packages", and make sure the environment is activated')
 
 assert 'libraries' in config, 'The configuration file (config.yaml) must contain a libraries section'
+
+# Set default cell-meta values
+for lib, libdata in config['libraries'].items():
+    libdata.setdefault('cell-meta', {})
+    libdata['cell-meta'].setdefault('primary-index', 'sciT')
+    libdata['cell-meta'].setdefault('meta', {})
+
+    if libdata['cell-meta']['primary-index'] != 'sciT':
+        raise ValueError(
+            f"Library {lib}: cell-meta.primary-index must be 'sciT'"
+        )
+
 libraries = list(config['libraries'].keys())
 def write_meta_file(configuration_dict, path: str, multiomes_path:str, meta_data_column_order: List[str]):
     # Make sure output directory exists
