@@ -111,8 +111,11 @@ conda activate sciT_snakemake
 Clone this github repository
 
 ```bash
-# clone repository
+## clone repository
+# Clone using ssh (when you have private-public key pair set up with github)
 git clone git@github.com:Suirotras/SciT_snakemake.git
+# Clone using HTTPS
+git clone https://github.com/Suirotras/SciT_snakemake.git
 # move into repository
 cd SciT_snakemake
 ```
@@ -141,8 +144,11 @@ Clone this github repository to the location where you want to preprocess the sc
 
 ```bash
 cd path/to/desired/location
-# clone repository
+## clone repository
+# Clone using ssh (when you have private-public key pair set up with github)
 git clone git@github.com:Suirotras/SciT_snakemake.git
+# Clone using HTTPS
+git clone https://github.com/Suirotras/SciT_snakemake.git
 # move into repository
 cd SciT_snakemake
 cd sciT
