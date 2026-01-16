@@ -112,10 +112,10 @@ Clone this github repository
 
 ```bash
 ## clone repository
-# Clone using ssh (when you have private-public key pair set up with github)
-git clone git@github.com:Suirotras/SciT_snakemake.git
 # Clone using HTTPS
-git clone https://github.com/Suirotras/SciT_snakemake.git
+git clone https://github.com/Jari-van-Diermen/SciT_snakemake.git
+# Clone using ssh (if you have private-public key pair set up with github)
+git clone git@github.com:Jari-van-Diermen/SciT_snakemake.git
 # move into repository
 cd SciT_snakemake
 ```
@@ -145,10 +145,10 @@ Clone this github repository to the location where you want to preprocess the sc
 ```bash
 cd path/to/desired/location
 ## clone repository
-# Clone using ssh (when you have private-public key pair set up with github)
-git clone git@github.com:Suirotras/SciT_snakemake.git
 # Clone using HTTPS
-git clone https://github.com/Suirotras/SciT_snakemake.git
+git clone https://github.com/Jari-van-Diermen/SciT_snakemake.git
+# Clone using ssh (if you have private-public key pair set up with github)
+git clone git@github.com:Jari-van-Diermen/SciT_snakemake.git
 # move into repository
 cd SciT_snakemake
 cd sciT
@@ -280,7 +280,7 @@ contaminants and references you are using for read mapping. This allows **fastq-
 
 With all this set up, you can start the sciT workflow in order to process the sciT data.
 
-#### for usage locally (i.e. your own laptop)
+#### for usage locally (i.e. your own laptop. Not ideal, due to limited memory on your computer)
 
 Adjust the core count and memory size
 
@@ -290,7 +290,7 @@ snakemake --cores 32 --resources mem_mb=62000 -k -p --rerun-incomplete --nt --us
 
 #### for usage on SLURM cluster
 
-The `--cores 60` and `mem_mb=100000` might not be the most ideal settings, You can probably change it to lower values.
+The `--cores 60` and `mem_mb=100000` settings will probably work fine, Otherwise, you could set them to higher values.
 
 ```bash
 snakemake --executor slurm --cores 60 --resources mem_mb=100000 -k -p --rerun-incomplete --jobs 20 --restart-times 3 --use-conda --conda-prefix environments
@@ -299,6 +299,48 @@ snakemake --executor slurm --cores 60 --resources mem_mb=100000 -k -p --rerun-in
 > [!NOTE]
 > Use the `screen` utility to run the sciT workflow. This makes sure the sciT workflow can keep running when you to disconnect from the HPC.
 
+### After execution of the sciT workflow
+
+After running the sciT-workflow, a few addtional conda environments were created specifically for this workflow-instance. This will occur everytime you create another sciT-workflow-instance for analyzing a different dataset. This will clutter up your conda with environments you will not use anymore.
+
+To resolve this clutter, you can remove these environments after the sciT-workflow has succesfully finished processing the dataset.
+
+First identify the environments created by the sciT-workflow. The environments will be nameless and will be located in the `environments` directory of the sciT-workflow.
+
+```bash
+(base) [user@hpcs ~]$ conda env list
+
+# conda environments:
+#
+# * -> active
+# + -> frozen
+base                 *   /hpc/group/user/miniforge3
+sciT_snakemake           /hpc/group/user/miniforge3/envs/sciT_snakemake
+                         /hpc/group/user/projects/Project_name/dataset/SciT_snakemake/sciT/environments/0e936e0b2ccc1619d5b0a99ed7a72b45_
+                         /hpc/group/user/projects/Project_name/dataset/SciT_snakemake/sciT/environments/6cf0f8d62a3af7b6dd14877647e7ddaf_
+                         /hpc/group/user/projects/Project_name/dataset/SciT_snakemake/sciT/environments/be1fe21d89db552ef93c748d5d991b34_
+                         /hpc/group/user/projects/Project_name/dataset/SciT_snakemake/sciT/environments/d2e40cac03457415050a8e814d069dcf_
+                         /hpc/group/user/projects/Project_name/dataset/SciT_snakemake/sciT/environments/f51e34b1231bc7ba49b279d11db102ed_
+```
+
+You can delete these environments simultaniously. **PLEASE BE CAREFUL** and first make sure that you are selecting the correct environments.
+
+You can check with the command below that your `grep` command indeed selects the correct environments
+
+```bash
+(base) [user@hpcs ~]$ conda env list | grep "projects/Project_name/dataset/SciT_snakemake/sciT/environments/"
+                         /hpc/group/user/projects/Project_name/dataset/SciT_snakemake/sciT/environments/0e936e0b2ccc1619d5b0a99ed7a72b45_
+                         /hpc/group/user/projects/Project_name/dataset/SciT_snakemake/sciT/environments/6cf0f8d62a3af7b6dd14877647e7ddaf_
+                         /hpc/group/user/projects/Project_name/dataset/SciT_snakemake/sciT/environments/be1fe21d89db552ef93c748d5d991b34_
+                         /hpc/group/user/projects/Project_name/dataset/SciT_snakemake/sciT/environments/d2e40cac03457415050a8e814d069dcf_
+                         /hpc/group/user/projects/Project_name/dataset/SciT_snakemake/sciT/environments/f51e34b1231bc7ba49b279d11db102ed_
+```
+
+**After confirming** that the `grep` command selects the correct environments. The following command will delete the selected environments.
+
+```bash
+conda env list | grep "projects/Project_name/dataset/SciT_snakemake/sciT/environments/" | awk '{print $NF}' | xargs -I {} conda remove -p {} --all -y
+```
 
 ## sciT-snakemake expected output
 
@@ -449,6 +491,20 @@ resources:
 > [!TIP]
 > The same logic applies to other resource limitations as for the above mentioned `mem_mb`. When snakemake rules display errors for other
 > resource limitations, like `runtime`, you can likely change this in the **resources** directive of the problematic rule.
+
+### Output file error
+
+Some rules might run into an **OUTPUT FILE** error.
+
+```bash
+BAMoutput.cpp:27:BAMoutput: exiting because of *OUTPUT FILE* error: could not create output file results/libraries/i2-15k_cells_cDNA/RNA_SE__STARtmp//BAMsort/20/17
+SOLUTION: check that the path exists and you have write permission for this file. Also check ulimit -n and increase it to allow more open files.
+```
+
+The solution is to increase the *ulimit* to a large number, which you can do by running `ulimit -n 10000` 1000000
+
+> [!TIP]
+> You can check your current *ulimit* by running `ulimit -n`. By checking, you can make sure to set it to a higher number.
 
 ### Other issues
 
